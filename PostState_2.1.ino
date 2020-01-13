@@ -12,9 +12,12 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);   // I2C address and LCD Size
 #define WATER_HIGH_PIN              A1
 
 #define IR_INPUT_PIN                2
+
 #define PING_PIN                    3
-#define ECHO_PIN                    4
-#define PIRA_INPUT_PIN              5
+#define ECHO_PIN_1                  4
+#define ECHO_PIN_2                  5
+#define ECHO_PIN_3                  13
+
 #define RELAY_INVALVE_PIN           6
 #define RELAYA_OUT_VALVE_MAIN_PIN   7
 #define RELAYB_OUT_VALVE_PIN        8
@@ -24,7 +27,6 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);   // I2C address and LCD Size
 #define FULLY_OPEN_PIN              11
 #define FULLY_CLOSED_PIN            12
 
-#define LED_PIN                     13
 #define FILL_TIMEOUT                10000
 #define DRAIN_TIMEOUT               10000
 #define OPEN_TIME_LENGTH            15000  // 600,000 = 10 minutes
@@ -88,10 +90,11 @@ unsigned long gNextBlinkTime;
 bool gLedState = LOW;
 int totalFilled, totalDrained;
 char data[20];
-
+/*
 bool checkPIR() {
   return digitalRead(PIRA_INPUT_PIN);
 }
+*/
 bool checkSnout() {
   return !digitalRead(IR_INPUT_PIN);
 }
@@ -296,13 +299,15 @@ void setup() {
   digitalWrite(RELAYA_OUT_VALVE_MAIN_PIN, RELAY_LOW );
   Serial.begin(9600);
 
-  pinMode(LED_PIN, OUTPUT );
+  //pinMode(LED_PIN, OUTPUT );
   pinMode(WATER_LOW_PIN, INPUT_PULLUP);
   pinMode(WATER_HIGH_PIN, INPUT_PULLUP);
   pinMode(IR_INPUT_PIN, INPUT_PULLUP);
   pinMode(PING_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-  pinMode(PIRA_INPUT_PIN, INPUT);
+  pinMode(ECHO_PIN_1, INPUT);
+  pinMode(ECHO_PIN_2, INPUT);
+  pinMode(ECHO_PIN_3, INPUT);
+  //pinMode(PIRA_INPUT_PIN, INPUT);
   pinMode(RELAY_INVALVE_PIN, OUTPUT);
   pinMode(RELAYB_OUT_VALVE_PIN, OUTPUT);
   pinMode(RELAYC_OUT_VALVE_PIN, OUTPUT);
@@ -352,7 +357,7 @@ long checkUltraSonic()
   delayMicroseconds(10);
   digitalWrite(PING_PIN, LOW);
   
-   return  pulseIn(ECHO_PIN, HIGH) / 74 / 2;
+   return  newPulseIn(ECHO_PIN_1, ECHO_PIN_2, ECHO_PIN_3, HIGH, 10000) / 74 / 2;
 }
 unsigned long wakeUp = 0;
 bool PIR, SNOUT, UPPERWATER, LOWERWATER, FLUSH, ULTRASONIC;
@@ -492,4 +497,70 @@ void loop() {
   gDiffMs = millis() - gLastMs;
   if (gDiffMs <= 100)  delay(100 - gDiffMs);  else  Serial.println(gDiffMs);
   gLastMs = millis();
+}
+
+unsigned long newPulseIn(uint8_t pin1, uint8_t pin2, uint8_t pin3, uint8_t state, unsigned long timeout)
+{
+  // cache the port and bit of the pin in order to speed up the
+  // pulse width measuring loop and achieve finer resolution.  calling
+  // digitalRead() instead yields much coarser resolution.
+  uint8_t bit1 = digitalPinToBitMask(pin1);
+  uint8_t bit2 = digitalPinToBitMask(pin2);
+  uint8_t bit3 = digitalPinToBitMask(pin3);
+  uint8_t port1 = digitalPinToPort(pin1);
+  uint8_t port2 = digitalPinToPort(pin2);
+  uint8_t port3 = digitalPinToPort(pin3);
+  uint8_t stateMask1 = (state ? bit1 : 0);
+  uint8_t stateMask2 = (state ? bit2 : 0);
+  uint8_t stateMask3 = (state ? bit3 : 0);
+  unsigned long width = 0; // keep initialization out of time critical area
+  
+  // convert the timeout from microseconds to a number of times through
+  // the initial loop; it takes 16 clock cycles per iteration.
+  unsigned long numloops = 0;
+  unsigned long maxloops = microsecondsToClockCycles(timeout) / 58;
+  
+
+  while (((*portInputRegister(port1) & bit1) == stateMask1) || ((*portInputRegister(port2) & bit2) == stateMask2) || ((*portInputRegister(port3) & bit3) == stateMask3))
+  {
+    if (numloops++ == maxloops) return 0;
+  }
+
+  while (((*portInputRegister(port1) & bit1) != stateMask1))
+    if (numloops++ == maxloops)
+      return 0;
+
+  while (((*portInputRegister(port2) & bit2) != stateMask2))
+    if (numloops++ == maxloops)
+      return 0;
+  //Serial.println("pulse to start 3");
+  while (((*portInputRegister(port3) & bit3) != stateMask3))
+    if (numloops++ == maxloops)
+      return 0;
+
+  // wait for the pulse to stop
+  //Serial.println("pulse to stop");
+  bool port1Triggered;
+  bool port2Triggered;
+  bool port3Triggered;
+  do 
+  {
+    port1Triggered = ((*portInputRegister(port1) & bit1) == stateMask1);
+    port2Triggered = ((*portInputRegister(port2) & bit2) == stateMask2);
+    port3Triggered = ((*portInputRegister(port3) & bit3) == stateMask3);
+    if (numloops++ == maxloops){
+      return 0;
+    }
+    width++;
+  }
+  while (port1Triggered && port2Triggered && port3Triggered);
+
+  
+
+  // convert the reading to microseconds. The loop has been determined
+  // to be 20 clock cycles long and have about 16 clocks between the edge
+  // and the start of the loop. There will be some error introduced by
+  // the interrupt handlers.
+  //return width;
+  return clockCyclesToMicroseconds(width * 21 + 16);
 }
