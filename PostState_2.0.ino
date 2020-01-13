@@ -12,6 +12,8 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);   // I2C address and LCD Size
 #define WATER_HIGH_PIN              A1
 
 #define IR_INPUT_PIN                2
+#define PING_PIN                    3
+#define ECHO_PIN                    4
 #define PIRA_INPUT_PIN              5
 #define RELAY_INVALVE_PIN           6
 #define RELAYA_OUT_VALVE_MAIN_PIN   7
@@ -27,6 +29,7 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);   // I2C address and LCD Size
 #define DRAIN_TIMEOUT               10000
 #define OPEN_TIME_LENGTH            15000  // 600,000 = 10 minutes
 #define VALVE_TIMEOUT               3300 //3300 
+#define TRIGGER_INCHES              40 
 
 #define ERROR_DELAY_SHORT           300
 #define ERROR_DELAY_LONG            1000
@@ -297,6 +300,8 @@ void setup() {
   pinMode(WATER_LOW_PIN, INPUT_PULLUP);
   pinMode(WATER_HIGH_PIN, INPUT_PULLUP);
   pinMode(IR_INPUT_PIN, INPUT_PULLUP);
+  pinMode(PING_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
   pinMode(PIRA_INPUT_PIN, INPUT);
   pinMode(RELAY_INVALVE_PIN, OUTPUT);
   pinMode(RELAYB_OUT_VALVE_PIN, OUTPUT);
@@ -338,38 +343,58 @@ void setup() {
   lcd.setCursor(0, 3); lcd.print("F 000  D 000");
 
 }
+
+long checkUltraSonic()
+{
+  digitalWrite(PING_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(PING_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(PING_PIN, LOW);
+  
+   return  pulseIn(ECHO_PIN, HIGH) / 74 / 2;
+}
 unsigned long wakeUp = 0;
-bool PIR, SNOUT, UPPERWATER, LOWERWATER, FLUSH;
+bool PIR, SNOUT, UPPERWATER, LOWERWATER, FLUSH, ULTRASONIC;
 bool lastSNOUT = false;
 bool lastFLUSH = false;
 unsigned long lastMs;
 unsigned long totalSnoutMs = 0;
 
 tValvePositions OUTVALVE, INVALVE;
-String PIRs, SNOUTs, OUTVALVEs, INVALVEs, UPPERWATERs, LOWERWATERs;
-
+String  SNOUTs, OUTVALVEs, INVALVEs, UPPERWATERs, LOWERWATERs, USs;
+long inches;
+long lastinches = -1;
 /**************************************************************************************/
 void loop() {
 
   // Read All of the sensors
-  PIR =  checkPIR();
+
+
   SNOUT = checkSnout();
   INVALVE = getValvePosition(gInValve);
   OUTVALVE = getValvePosition(gOutValve);
   UPPERWATER = checkUpperWater();
   LOWERWATER = checkLowerWater();
   FLUSH = !digitalRead(ZERO_DRINKINGTIME_PIN);
+ inches = checkUltraSonic();
+  if (inches==0) inches=9999;
+  ULTRASONIC = inches <= TRIGGER_INCHES;
+  if( lastinches != inches ) lcd.setCursor(10, 2); lcd.print("      ");
+  timeStr = String(inches);
+  lcd.setCursor(10, 2); lcd.print(timeStr);
+  lastinches = inches;
 
 
   // fill sensor display strings
-  PIRs = (PIR) ? "P" : "p";
+  USs = (ULTRASONIC) ? "*" : " ";
   SNOUTs = (SNOUT) ? "S" : "s";
   OUTVALVEs = (OUTVALVE == vaClosed) ? "C" : (OUTVALVE == vaOpen) ? "O" : "?";
   UPPERWATERs = (UPPERWATER) ? "U" : "u";
   LOWERWATERs = (LOWERWATER) ? "L" : "l";
   INVALVEs = (INVALVE == vaClosed) ? "w" : "W";
 
-  lcd.setCursor(14, 3); lcd.print(PIRs + SNOUTs + UPPERWATERs + LOWERWATERs + INVALVEs + OUTVALVEs);
+  lcd.setCursor(14, 3); lcd.print(USs + SNOUTs + UPPERWATERs + LOWERWATERs + INVALVEs + OUTVALVEs);
 
   unsigned long nowMs = millis();
   if (!lastSNOUT && SNOUT )
@@ -388,8 +413,8 @@ void loop() {
 
   switch (gMainState) {
     case stIdle:
-      if (PIR || SNOUT) {
-        Serial.print(millis()); Serial.print("\t TRIGGER PIR= "); Serial.print(PIR);
+      if (ULTRASONIC || SNOUT) {
+        Serial.print(millis()); Serial.print("\t TRIGGER US= "); Serial.print(ULTRASONIC);
         Serial.print("  IR="); Serial.println(SNOUT);
         changeMainState(stClosingOut);
       }
