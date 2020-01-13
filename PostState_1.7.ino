@@ -19,6 +19,7 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);   // I2C address and LCD Size
 
 #define FULLY_OPEN_PIN              11
 #define FULLY_CLOSED_PIN            12
+#define VALVE_TRUE                  0
 #define LED_PIN                     13
 #define FILL_TIMEOUT                15000
 #define DRAIN_TIMEOUT               20000
@@ -91,14 +92,17 @@ void startError(bool fatal, unsigned long blinkTime, int blinkCount);
 void handleValve(sValve &valve);
 void setErrorLED(bool state);
 
-/* Definitions */
-bool checkPIR() {return digitalRead(PIRA_INPUT_PIN);}
-bool checkSnout() {return !digitalRead(IR_INPUT_PIN);}
-bool checkUpperWater() { return (analogRead(WATER_HIGH_PIN) > WATER_THRESHOLD) ? false : true; }
-
+bool checkPIR() {
+  return digitalRead(PIRA_INPUT_PIN);
+}
+bool checkSnout() {
+  return !digitalRead(IR_INPUT_PIN);
+}
+bool checkUpperWater() {
+  return (analogRead(WATER_HIGH_PIN) > WATER_THRESHOLD) ? false : true;
+}
 bool checkLowerWater() {
-  if (analogRead(WATER_LOW_PIN) > WATER_THRESHOLD) return false;
-  else return true;
+  return (analogRead(WATER_LOW_PIN) > WATER_THRESHOLD) ? false : true;
 }
 
 void initValve(sValve &valve, tValveName vName, int portWriteA, int portWriteB, int portWriteC, int portReadFullyOpen, int portReadFullyClosed) {
@@ -126,8 +130,6 @@ void initValve(sValve &valve, tValveName vName, int portWriteA) {
 void setValveTarget(sValve &valve, tValvePositions pos) {
   valve.target = pos;
   setValve(valve, pos);
-  //setValvePower(valve, prEnabled);
-
   if (valve.type == vtSlow) {
     valve.motion = moMoving;
     valve.moveStartTime = millis();
@@ -141,61 +143,34 @@ void setValve(sValve &valve, tValvePositions target) {
     } else {
       setValvePower(valve, prDisabled);
     }
-  }
-  else {
+  } else {
     if (target == vaOpen) {
       setValvePower(valve, prDisabled);
       delay(50);
       digitalWrite(valve.portWriteB, RELAY_LOW);
-      //Serial.println("relayB_OutValue_pin, LOW");
       digitalWrite(valve.portWriteC, RELAY_LOW);
-      //Serial.println("relayC_OutValue_pin, LOW");
-      delay(50);
+      delay(15);
       setValvePower(valve, prEnabled);
     } else {
       setValvePower(valve, prDisabled);
       delay(50);
       digitalWrite(valve.portWriteB, RELAY_HIGH);
-      //Serial.println("relayB_OutValue_pin, HIGH");
       digitalWrite(valve.portWriteC, RELAY_HIGH);
-      //Serial.println("relayC_OutValue_pin, HIGH");
-      delay(50);
+      delay(15);
       setValvePower(valve, prEnabled);
     }
   }
 }
 
 void setValvePower(sValve &valve, tValvePower power) {
-
-  if (power == prEnabled) {
-    digitalWrite(valve.portWriteA, RELAY_HIGH);
-    Serial.print(millis());
-    Serial.print("\t");
-    Serial.print("Power enabled ");
-    Serial.println(valve.valveName == 1 ? "OutValve" : "InValve");
-  }
-
-  if (power == prDisabled) {
-    digitalWrite(valve.portWriteA, RELAY_LOW);
-    Serial.print(millis());
-    Serial.print("\t");
-    Serial.print("Power disabled ");
-    Serial.println(valve.valveName == 1 ? "OutValve" : "InValve");
-  }
-
+  digitalWrite(valve.portWriteA, (power == prEnabled) ? RELAY_HIGH : RELAY_LOW );
 }
 
-
 tValvePositions getValvePosition(sValve &valve) {
-  tValvePositions cur = vaPartiallyOpen;
-  if (digitalRead(FULLY_OPEN_PIN) != 1)cur = vaOpen;
-  if (digitalRead(FULLY_CLOSED_PIN) != 1)cur = vaClosed;
-  return cur;
+  return (digitalRead(FULLY_OPEN_PIN) == VALVE_TRUE )? vaOpen : (digitalRead(FULLY_CLOSED_PIN) == VALVE_TRUE) ? vaClosed : vaPartiallyOpen;
 }
 
 void startError(bool fatal, unsigned long blinkTime, int blinkCount) {
-
-
   if (fatal) {
     changeMainState(stDisabled);
     setValvePower(gInValve, prDisabled);
@@ -214,7 +189,6 @@ void changeMainState(tMainStates target) {
   Serial.print("\t");
   Serial.print("State CHANGED target is now ");
 
-
   switch (target) {
     case stIdle:
       Serial.println("stIdle");
@@ -228,7 +202,6 @@ void changeMainState(tMainStates target) {
       break;
 
     case stFilling:
-
       Serial.println("stFilling");
       setValveTarget(gInValve, vaOpen);
       Serial.print(millis());
@@ -239,7 +212,6 @@ void changeMainState(tMainStates target) {
       break;
 
     case stFilled:
-
       gFilledStartTime = millis();
       Serial.println("stFilled");
       setValveTarget(gInValve, vaClosed);
@@ -247,13 +219,10 @@ void changeMainState(tMainStates target) {
       Serial.print("\t");
       Serial.print("gFilledStartTime =");
       Serial.println(gFilledStartTime);
-
       break;
 
     case stDraining:
-
       Serial.println("stDraining");
-
       Serial.print(millis());
       Serial.print("\t");
       Serial.print("gDrainStartTime=");
@@ -266,7 +235,6 @@ void changeMainState(tMainStates target) {
       Serial.println("stDisabled");
       break;
   }
-
   gMainState = target;
 }
 
@@ -296,8 +264,6 @@ void handleValve(sValve &valve) {
       lcd.setCursor(9, 0);
       s1 = String( (valve.moveStartTime + VALVE_TIMEOUT - millis()) / 1000.0, 1 ) + " ";
       lcd.print( s1);
-
-
     }
   }
 }
@@ -327,7 +293,6 @@ void setup() {
 
   //initialing states turn everything off
 
-
   digitalWrite(RELAY_INVALVE_PIN, RELAY_LOW );
   digitalWrite(RELAYC_OUT_VALVE_PIN, RELAY_LOW );
   digitalWrite(RELAYB_OUT_VALVE_PIN, RELAY_LOW  );
@@ -343,8 +308,7 @@ void setup() {
   lcd.setCursor(0, 1);
   lcd.print("Initializing");
   for ( int j = 1; j <= 1; j++) {
-    for ( int i = 12; i <= 19; i++ )
-    {
+    for ( int i = 12; i <= 19; i++ ) {
       lcd.setCursor(i, 1);
       lcd.print(".");
       delay(250);
@@ -360,6 +324,7 @@ bool PIR, SNOUT, UPPERWATER, LOWERWATER;
 tValvePositions OUTVALVE;
 String PIRs, SNOUTs, OUTVALVEs, UPPERWATERs, LOWERWATERs;
 
+/**************************************************************************************/
 void loop() {
 
   // Read All of the sensors
@@ -391,7 +356,7 @@ void loop() {
         changeMainState(stClosingOut);
       }
       lcd.setCursor(9, 0);
-      s1 = String( (millis() - gIdleStart) / 1000.0, 1 ) +" ";
+      s1 = String( (millis() - gIdleStart) / 1000.0, 1 ) + " ";
       lcd.print( s1);
       break;
 
@@ -420,9 +385,10 @@ void loop() {
         changeMainState(stFilled);
       }
 
+      s1 = String( (gFillStartTime + FILL_TIMEOUT - millis()) / 1000.0, 1) + " ";
       lcd.setCursor(9, 0);
-      s1 = String( (gFillStartTime + FILL_TIMEOUT - millis()) / 1000.0, 1)+ " ";
       lcd.print( s1);
+
       break;
 
     case stFilled:
@@ -452,9 +418,8 @@ void loop() {
         Serial.print("  will drain at=");
         Serial.println( gFilledStartTime + OPEN_TIME_LENGTH);
       }
-
+      s1 = String( (gFilledStartTime + OPEN_TIME_LENGTH - millis()) / 1000.0, 1) + " ";
       lcd.setCursor(9, 0);
-      s1 = String( (gFilledStartTime + OPEN_TIME_LENGTH - millis()) / 1000.0, 1)+" ";
       lcd.print( s1);
       break;
 
@@ -462,16 +427,19 @@ void loop() {
       if (!LOWERWATER && !UPPERWATER )  {
         gMainState = stIdle;
       }
-      else {
-        
+      else if (millis() >= gDrainStartTime + DRAIN_TIMEOUT) {
+        Serial.print(millis());
+        Serial.print("\t");
+        Serial.print("*******  ERROR 4 ");
+        Serial.print("Did NOT drain in DRAIN_TIMEOUT");
+        Serial.println(DRAIN_TIMEOUT);
+        startError(true, 500, 4);
       }
-      
-
-      /*    lcd.setCursor(9, 0);
-          s1 = String( (gFilledStartTime + OPEN_TIME_LENGTH - millis()) / 1000.0, 1);
-          s1 = String(s1 + "  ");
-          lcd.print( s1);
-      */
+      else {
+        s1 = String( (gDrainStartTime + DRAIN_TIMEOUT - millis()) / 1000.0, 1) + " ";
+        lcd.setCursor(9, 0);
+        lcd.print( s1);
+      }
 
       break;
 
@@ -496,7 +464,6 @@ void loop() {
         gCurBlink = 0;
       }
     }
-
     gLedState = !gLedState;
     setErrorLED(gLedState);
   }
