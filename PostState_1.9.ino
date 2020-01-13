@@ -32,11 +32,11 @@ LiquidCrystal_I2C lcd(0x27, 20, 4);   // I2C address and LCD Size
 #define ERROR_DELAY_LONG            1000
 #define WATER_THRESHOLD             700
 
-//                       12345678901234567890
-String errErrorStrs[] = {"OutValve failed to open.  OutValve failed to ",
-                         "OutValve failed to close.  OutValve failed to ",
-                         "Basin failed to drain. Basin failed to dr",
-                         "Basin failed to fill. Basin failed to fi"
+//                        12345678901234567890
+char * errErrorStrs[] = {"*OUTVAL FAILED OPEN ",
+                         "*OUTVAL FAILED CLOSE",
+                         "*BASIN FAILED DRAIN ",
+                         " *BASIN FAILED FILL "
                         };
 /* Enumerations */
 typedef enum e_errorStrs {erOutOpen, erOutClose, erDraining, erFilling} tErrorStrs;
@@ -179,12 +179,7 @@ void startError(tErrorStrs err) {
   changeMainState(stDisabled);
   setValvePower(gInValve, prDisabled);
   setValvePower(gOutValve, prDisabled);
-  lcd.setCursor(0, 1);
-  curPos = 0;
-  errIndex= err;
-  lenStr  = errErrorStrs[errIndex].length();
-  lcd.print( errErrorStrs[err]);
-
+  lcd.setCursor(0, 1); lcd.print(errErrorStrs[err]);
   gError = true;
 }
 
@@ -343,7 +338,7 @@ void setup() {
   lcd.setCursor(0, 3); lcd.print("F 000  D 000");
 
 }
-  unsigned long wakeUp = 0;
+unsigned long wakeUp = 0;
 bool PIR, SNOUT, UPPERWATER, LOWERWATER, FLUSH;
 bool lastSNOUT = false;
 bool lastFLUSH = false;
@@ -463,17 +458,8 @@ void loop() {
     case stDisabled:
       timeStr = String( (millis() - gDisabledStart) / 1000.0, 1 ) + " ";
       lcd.setCursor(9, 0); lcd.print(timeStr);
-
-      if (millis() > wakeUp) {
-        lcd.setCursor(0, 1); lcd.print(errErrorStrs[errIndex].substring(curPos, curPos + 19));
-        curPos++;
-        if (curPos == lenStr - 18) curPos = 0;
-        wakeUp = millis()+350;
-        
-      }
       break;
   }
-
 
   handleValve(gInValve);
   handleValve(gOutValve);
